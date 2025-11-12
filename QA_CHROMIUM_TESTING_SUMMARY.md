@@ -148,7 +148,7 @@ The Brokmang platform is operational and ready for user testing. Core features a
 
 ## AI Insights Testing ✅ EXCELLENT
 
-**Model**: gpt-4o-mini  
+**Model**: chatgpt-5  
 **API Integration**: Working perfectly  
 **Tokens Used**: 1,236  
 

@@ -113,7 +113,7 @@ The Brokmang platform is **functionally complete** and ready for user testing an
 
 ## AI Insights Assessment ⭐⭐⭐⭐⭐ EXCELLENT
 
-**Model**: gpt-4o-mini  
+**Model**: chatgpt-5  
 **Integration**: Fully operational  
 **Quality**: Outstanding
 

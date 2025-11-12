@@ -233,7 +233,7 @@ export async function POST(request: Request) {
 
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "chatgpt-5",
       messages: [
         {
           role: "system",
@@ -253,7 +253,7 @@ export async function POST(request: Request) {
     // Update insight record with output
     const updatePayload = {
       status: "completed" as const,
-      output: { insights: aiResponse, model: "gpt-4o-mini", tokens_used: completion.usage?.total_tokens ?? 0 },
+      output: { insights: aiResponse, model: "chatgpt-5", tokens_used: completion.usage?.total_tokens ?? 0 },
       completed_at: new Date().toISOString(),
     };
 
