@@ -152,7 +152,7 @@ export default async function AIInsightsPage() {
               <div className="p-2 rounded-xl bg-white/70 shadow-sm">{stat.icon}</div>
             </div>
             {stat.key === "completed" && completedInsights[0] ? (
-              <p className="text-xs text-muted-foreground mt-4">
+              <p className="text-xs text-muted-foreground mt-4" suppressHydrationWarning>
                 Latest: {formatRelativeTime(new Date(completedInsights[0].created_at))}
               </p>
             ) : null}
@@ -234,7 +234,7 @@ function InsightCard({ insight }: { insight: Insight }) {
             </div>
             <div>
               {statusBadge}
-              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
+              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5" suppressHydrationWarning>
                 <Clock className="h-3.5 w-3.5" />
                 {formatRelativeTime(createdAt)}
               </p>
