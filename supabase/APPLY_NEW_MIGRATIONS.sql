@@ -130,9 +130,13 @@ create table if not exists public.daily_agent_metrics (
   agent_id uuid not null references public.profiles(id) on delete cascade,
   work_date date not null default current_date,
   active_calls_count int not null default 0,
+  leads_taken_count int not null default 0,
+  cold_calls_count int not null default 0,
   meetings_scheduled int not null default 0,
+  meetings_completed int not null default 0,
   requests_generated int not null default 0,
   deals_closed int not null default 0,
+  orientation text check (orientation in ('team', 'developer')),
   mood text check (mood in ('great', 'good', 'okay', 'stressed', 'difficult')),
   notes text,
   created_at timestamptz not null default now(),
@@ -156,9 +160,13 @@ select
   p.full_name as agent_name,
   dam.work_date,
   coalesce(dam.active_calls_count, 0) as calls_made,
+  coalesce(dam.leads_taken_count, 0) as leads_taken,
+  coalesce(dam.cold_calls_count, 0) as cold_calls,
   coalesce(dam.meetings_scheduled, 0) as meetings,
+  coalesce(dam.meetings_completed, 0) as meetings_completed,
   coalesce(dam.requests_generated, 0) as requests,
   coalesce(dam.deals_closed, 0) as deals,
+  dam.orientation,
   dam.mood,
   al.check_in_time,
   al.check_out_time,
@@ -171,6 +179,11 @@ from public.daily_agent_metrics dam
 join public.profiles p on p.id = dam.agent_id
 left join public.attendance_logs al on al.agent_id = dam.agent_id and al.work_date = dam.work_date
 order by dam.work_date desc, p.full_name;
+
+comment on column public.daily_agent_metrics.leads_taken_count is 'Number of leads claimed by the agent for the work date.';
+comment on column public.daily_agent_metrics.cold_calls_count is 'Number of cold calls completed by the agent for the work date.';
+comment on column public.daily_agent_metrics.meetings_completed is 'Number of meetings completed (logged) by the agent for the work date.';
+comment on column public.daily_agent_metrics.orientation is 'Morning knowledge orientation selected by the agent for the work date.';
 
 -- ============================================
 -- MIGRATION 0013: Meetings Calendar

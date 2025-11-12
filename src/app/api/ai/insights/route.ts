@@ -5,6 +5,59 @@ import { getSupabaseServerClient } from "@/lib/supabase/server-client";
 import { getSupabaseServiceRoleClient } from "@/lib/supabase/admin-client";
 import type { Database } from "@/lib/supabase";
 
+type SupportedRole = "team_leader" | "sales_manager" | "business_unit_head" | "ceo" | "admin";
+
+type KeyMetric = {
+  title: string;
+  value: string;
+  trend?: string;
+  insight?: string;
+};
+
+type Recommendation = {
+  priority: "high" | "medium" | "low";
+  title: string;
+  action: string;
+  impact: string;
+};
+
+type WatchItem = {
+  issue: string;
+  risk: string;
+  suggestedAction: string;
+};
+
+type Icebreaker = {
+  audience: string;
+  conversationGoal: string;
+  script: string;
+};
+
+type StructuredInsightPayload = {
+  role: string;
+  generatedAt: string;
+  summary: string;
+  keyMetrics: KeyMetric[];
+  recommendations: Recommendation[];
+  watchlist?: WatchItem[];
+  icebreakers: Icebreaker[];
+  nextCheckIn?: string;
+};
+
+type RoleContext = {
+  role: SupportedRole | string;
+  organizationId: string;
+  dataSources: Record<string, unknown>;
+  primaryFocus: string;
+  relationshipTargets: IcebreakerTarget[];
+};
+
+type IcebreakerTarget = {
+  name: string;
+  relationship: string;
+  context: string;
+};
+
 const INSIGHT_LIMIT = 5;
 
 // Initialize OpenAI client (optional - only if API key is available)
@@ -16,146 +69,302 @@ const getOpenAIClient = () => {
   return new OpenAI({ apiKey });
 };
 
-// Role-specific prompt templates
-const getPromptForRole = async (
-  role: string,
-  scope: string,
-  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
-  organizationId: string,
-): Promise<string> => {
-  // Fetch relevant data based on role and scope
-  let contextData = "";
-
-  switch (role) {
-    case "team_leader": {
-      // Get team performance data
-      const { data: teamData } = await supabase
-        .from("team_leader_dashboard")
-        .select("*")
-        .limit(1);
-
-      const { data: memberData } = await supabase
-        .from("team_member_performance")
-        .select("*")
-        .limit(10);
-
-      contextData = `Team Performance: ${JSON.stringify(teamData || [])}\nMember Performance: ${JSON.stringify(memberData || [])}`;
-
-      return `You are an AI assistant helping a team leader in a brokerage firm. Analyze the following team performance data and provide actionable insights:
-
-${contextData}
-
-Please provide:
-1. Key performance highlights
-2. Agents who need coaching or support
-3. Recommended actions to improve team performance
-4. Trends and patterns you notice
-
-Keep the response concise and actionable (max 500 words).`;
-    }
-
-    case "sales_manager": {
-      // Get multi-team data
-      const { data: teamData } = await supabase
-        .from("team_leader_dashboard")
-        .select("*")
-        .limit(20);
-
-      contextData = `Teams Performance: ${JSON.stringify(teamData || [])}`;
-
-      return `You are an AI assistant helping a sales manager overseeing multiple teams. Analyze the following team performance data and provide strategic insights:
-
-${contextData}
-
-Please provide:
-1. Team comparison and rankings
-2. Resource allocation recommendations
-3. Teams that need attention
-4. Strategic recommendations for improving overall performance
-
-Keep the response concise and strategic (max 500 words).`;
-    }
-
-    case "finance": {
-      // Get financial data
-      const { data: pnlData } = await supabase
-        .from("pnl_overview")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .limit(10);
-
-      contextData = `Financial Data: ${JSON.stringify(pnlData || [])}`;
-
-      return `You are an AI assistant helping a finance team. Analyze the following financial data and provide insights:
-
-${contextData}
-
-Please provide:
-1. Cost optimization opportunities
-2. Revenue forecasting insights
-3. Budget recommendations
-4. Financial health assessment
-
-Keep the response concise and focused on financial metrics (max 500 words).`;
-    }
-
-    case "business_unit_head": {
-      // Get BU performance and financial data
-      const { data: buData } = await supabase
-        .from("business_unit_finance_overview")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .limit(5);
-
-      contextData = `Business Unit Data: ${JSON.stringify(buData || [])}`;
-
-      return `You are an AI assistant helping a business unit head. Analyze the following BU data and provide strategic insights:
-
-${contextData}
-
-Please provide:
-1. Business unit health assessment
-2. Performance vs. financial metrics alignment
-3. Strategic recommendations
-4. Areas needing attention
-
-Keep the response concise and strategic (max 500 words).`;
-    }
-
-    case "ceo":
-    case "admin": {
-      // Get organization-wide data
-      const { data: orgData } = await supabase
-        .from("organization_overview")
-        .select("*")
-        .eq("id", organizationId)
-        .maybeSingle();
-
-      const { data: buData } = await supabase
-        .from("business_unit_finance_overview")
-        .select("*")
-        .eq("organization_id", organizationId)
-        .limit(20);
-
-      contextData = `Organization Overview: ${JSON.stringify(orgData || {})}\nBusiness Units: ${JSON.stringify(buData || [])}`;
-
-      return `You are an AI assistant helping a CEO/Executive. Analyze the following organization-wide data and provide executive insights:
-
-${contextData}
-
-Please provide:
-1. Executive summary of organizational health
-2. Cross-BU insights and comparisons
-3. Strategic recommendations
-4. Key areas requiring executive attention
-
-Keep the response concise and executive-focused (max 500 words).`;
-    }
-
-    default:
-      return `Analyze the following data and provide insights: ${contextData}`;
-  }
+const ROLE_LABEL: Record<SupportedRole | "admin", string> = {
+  team_leader: "Team Leader",
+  sales_manager: "Sales Manager",
+  business_unit_head: "Business Unit Head",
+  ceo: "CEO",
+  admin: "Administrator",
 };
+
+const STRUCTURED_RESPONSE_SCHEMA = `
+Return ONLY valid JSON (no markdown, code fences, or commentary) with the following structure:
+{
+  "summary": "One-paragraph executive summary tailored to the role.",
+  "keyMetrics": [
+    {
+      "title": "Descriptive metric name",
+      "value": "Readable value (include currency/percent when relevant)",
+      "trend": "Short trend label such as '↑ 8% vs. last week'",
+      "insight": "Why this matters for the role"
+    }
+  ],
+  "recommendations": [
+    {
+      "priority": "high" | "medium" | "low",
+      "title": "Actionable headline",
+      "action": "Specific next step with ownership where possible",
+      "impact": "What positive result the action drives"
+    }
+  ],
+  "watchlist": [
+    {
+      "issue": "Emerging risk or bottleneck",
+      "risk": "Potential consequence if ignored",
+      "suggestedAction": "Preventive or corrective step"
+    }
+  ],
+  "icebreakers": [
+    {
+      "audience": "Person or group to meet (e.g., Agent Martin, Team Alpha)",
+      "conversationGoal": "Desired outcome or focus area",
+      "script": "Natural language opener and guidance for a one-to-one conversation"
+    }
+  ],
+  "nextCheckIn": "Concrete follow-up or cadence recommendation with timeframe."
+}
+If a section has no content, return an empty array for it (except summary and nextCheckIn which must always be strings).`;
+
+const sanitizeForPrompt = (value: unknown) => {
+  const stringifySafe = (input: unknown) => {
+    try {
+      return JSON.stringify(input, null, 2);
+    } catch (error) {
+      return JSON.stringify(String(input));
+    }
+  };
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 12).map((item) => JSON.parse(stringifySafe(item)));
+  }
+
+  if (value && typeof value === "object") {
+    return JSON.parse(stringifySafe(value));
+  }
+
+  return value;
+};
+
+const gatherRoleContext = async (
+  role: SupportedRole,
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  userId: string,
+  organizationId: string,
+): Promise<RoleContext> => {
+  const dataSources: Record<string, unknown> = {};
+  const relationshipTargets: IcebreakerTarget[] = [];
+
+  if (role === "team_leader") {
+    const { data: teamSummary } = await supabase
+      .from("team_leader_dashboard")
+      .select("*")
+      .eq("leader_id", userId)
+      .maybeSingle();
+
+    if (teamSummary) {
+      dataSources.teamDashboard = sanitizeForPrompt(teamSummary);
+      const { team_id: teamId } = teamSummary as { team_id: string };
+
+      if (teamId) {
+        const { data: members } = await supabase
+          .from("team_member_performance")
+          .select("*")
+          .eq("team_id", teamId)
+          .limit(12);
+
+        if (members) {
+          dataSources.teamMembers = sanitizeForPrompt(members);
+          relationshipTargets.push(
+            ...members.slice(0, 6).map((member) => ({
+              name: (member as Record<string, unknown>).agent_name as string,
+              relationship: "Sales Agent",
+              context: `Deals open: ${(member as Record<string, unknown>).open_deals}, Closed value: ${(member as Record<string, unknown>).closed_value}`,
+            })),
+          );
+        }
+      }
+    }
+
+    const { data: pendingRequests } = await supabase
+      .from("client_requests")
+      .select("id, client_name, status, destination, client_budget, project_needed, agent_id")
+      .eq("status", "pending")
+      .limit(10);
+
+    if (pendingRequests) {
+      dataSources.pendingRequests = sanitizeForPrompt(pendingRequests);
+    }
+
+    return {
+      role,
+      organizationId,
+      dataSources,
+      primaryFocus: "Coach agents, remove blockers, and progress deals effectively.",
+      relationshipTargets,
+    };
+  }
+
+  if (role === "sales_manager") {
+    const { data: teams } = await supabase.from("team_leader_dashboard").select("*").limit(25);
+    if (teams) {
+      dataSources.teams = sanitizeForPrompt(teams);
+      relationshipTargets.push(
+        ...teams.slice(0, 6).map((team) => ({
+          name: (team as Record<string, unknown>).team_name as string,
+          relationship: "Team Leader",
+          context: `Weighted pipeline: ${(team as Record<string, unknown>).weighted_pipeline}, Closed value: ${(team as Record<string, unknown>).total_closed_value}`,
+        })),
+      );
+    }
+
+    const { data: finance } = await supabase
+      .from("business_unit_finance_overview")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .limit(10);
+
+    if (finance) {
+      dataSources.businessUnits = sanitizeForPrompt(finance);
+    }
+
+    return {
+      role,
+      organizationId,
+      dataSources,
+      primaryFocus: "Optimize performance across teams and allocate support where impact is highest.",
+      relationshipTargets,
+    };
+  }
+
+  if (role === "business_unit_head") {
+    const { data: businessUnit } = await supabase
+      .from("business_units")
+      .select("id, name")
+      .eq("leader_id", userId)
+      .maybeSingle();
+
+    if (businessUnit) {
+      const buId = (businessUnit as { id: string }).id;
+      dataSources.businessUnitProfile = sanitizeForPrompt(businessUnit);
+
+      const { data: buFinance } = await supabase
+        .from("business_unit_finance_overview")
+        .select("*")
+        .eq("business_unit_id", buId)
+        .limit(10);
+
+      if (buFinance) {
+        dataSources.financials = sanitizeForPrompt(buFinance);
+      }
+
+      const { data: teams } = await supabase
+        .from("team_leader_dashboard")
+        .select("*")
+        .eq("business_unit_id", buId)
+        .limit(20);
+
+      if (teams) {
+        dataSources.teams = sanitizeForPrompt(teams);
+        relationshipTargets.push(
+          ...teams.slice(0, 6).map((team) => ({
+            name: (team as Record<string, unknown>).team_name as string,
+            relationship: "Team Leader",
+            context: `Member count: ${(team as Record<string, unknown>).member_count}, Pipeline: ${(team as Record<string, unknown>).weighted_pipeline}`,
+          })),
+        );
+      }
+    }
+
+    return {
+      role,
+      organizationId,
+      dataSources,
+      primaryFocus: "Drive business unit profitability and align teams with financial objectives.",
+      relationshipTargets,
+    };
+  }
+
+  // CEO and admin share executive overview
+  const { data: orgOverview } = await supabase
+    .from("organization_overview")
+    .select("*")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (orgOverview) {
+    dataSources.organizationOverview = sanitizeForPrompt(orgOverview);
+  }
+
+  const { data: businessUnits } = await supabase
+    .from("business_unit_finance_overview")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .limit(20);
+
+  if (businessUnits) {
+    dataSources.businessUnits = sanitizeForPrompt(businessUnits);
+    relationshipTargets.push(
+      ...businessUnits.slice(0, 6).map((bu) => ({
+        name: (bu as Record<string, unknown>).business_unit_name as string,
+        relationship: "Business Unit Head",
+        context: `Revenue: ${(bu as Record<string, unknown>).total_revenue}, Margin: ${(bu as Record<string, unknown>).total_margin}`,
+      })),
+    );
+  }
+
+  return {
+    role,
+    organizationId,
+    dataSources,
+    primaryFocus: "Steer the organization, balance growth with profitability, and anticipate risks.",
+    relationshipTargets,
+  };
+};
+
+const buildPrompt = (context: RoleContext): string => {
+  const roleLabel = ROLE_LABEL[context.role as SupportedRole] ?? ROLE_LABEL.admin;
+
+  const baseBrief = {
+    role: roleLabel,
+    organizationId: context.organizationId,
+    primaryFocus: context.primaryFocus,
+    relationshipTargets: context.relationshipTargets,
+    dataSources: context.dataSources,
+  };
+
+  return [
+    `You are an elite strategy copilot assisting the ${roleLabel} of a high-performing brokerage.` +
+      " Deliver an insightful, encouraging, and action-ready briefing that the leader can immediately use.",
+    "Use the provided context to identify signal, not noise. Highlight urgent wins, emerging risks, and opportunities to coach or collaborate.",
+    "Craft the response in clear business language. Provide realistic numbers, trends, and recommendations grounded in the data.",
+    "Always include engaging one-to-one icebreaker scripts that help the leader start productive conversations.",
+    "If data is missing, make reasonable assumptions and call them out explicitly in the watchlist.",
+    "Respond in English.",
+    "Context JSON:",
+    JSON.stringify(baseBrief, null, 2),
+    STRUCTURED_RESPONSE_SCHEMA,
+  ].join("\n\n");
+};
+
+const parseStructuredInsight = (raw: string): StructuredInsightPayload | null => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const clean = trimmed
+    .replace(/^```json/i, "")
+    .replace(/^```/, "")
+    .replace(/```$/, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(clean) as StructuredInsightPayload;
+    if (
+      typeof parsed.summary === "string" &&
+      Array.isArray(parsed.keyMetrics) &&
+      Array.isArray(parsed.recommendations) &&
+      Array.isArray(parsed.icebreakers)
+    ) {
+      return parsed;
+    }
+  } catch (error) {
+    console.error("Failed to parse structured insight payload:", error);
+  }
+
+  return null;
+};
+
 
 export async function POST(request: Request) {
   const supabase = await getSupabaseServerClient();
@@ -228,8 +437,18 @@ export async function POST(request: Request) {
   const insightRecord = insightRecordData as { id: string };
 
   try {
+    const supportedRole = role === "admin" ? "ceo" : (role as SupportedRole);
+    const context = await gatherRoleContext(
+      ["team_leader", "sales_manager", "business_unit_head", "ceo"].includes(supportedRole)
+        ? (supportedRole as SupportedRole)
+        : "ceo",
+      supabase,
+      session.user.id,
+      organization_id,
+    );
+
     // Generate prompt based on role
-    const prompt = await getPromptForRole(role, scope, supabase, organization_id);
+    const prompt = buildPrompt(context);
 
     // Call OpenAI API
     const completion = await openai.chat.completions.create({
@@ -237,23 +456,30 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content: "You are a helpful AI assistant that provides actionable insights for brokerage management.",
+          content:
+            "You are a senior operating partner for a high-growth brokerage. Provide sharp, data-backed insight and coaching-level conversation starters.",
         },
         {
           role: "user",
           content: prompt,
         },
       ],
-      max_tokens: 1000,
-      temperature: 0.7,
+      max_tokens: 1500,
+      temperature: 0.4,
     });
 
     const aiResponse = completion.choices[0]?.message?.content ?? "No insights generated.";
+    const structured = parseStructuredInsight(aiResponse);
 
     // Update insight record with output
     const updatePayload = {
       status: "completed" as const,
-      output: { insights: aiResponse, model: "chatgpt-5", tokens_used: completion.usage?.total_tokens ?? 0 },
+      output: {
+        model: "chatgpt-5",
+        raw_text: aiResponse,
+        structured,
+        tokens_used: completion.usage?.total_tokens ?? 0,
+      },
       completed_at: new Date().toISOString(),
     };
 

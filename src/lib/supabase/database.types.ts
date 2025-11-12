@@ -1135,12 +1135,16 @@ export type Database = {
         Row: {
           active_calls_count: number
           agent_id: string
+          cold_calls_count: number
           created_at: string
           deals_closed: number
           id: string
+          leads_taken_count: number
           meetings_scheduled: number
+          meetings_completed: number
           mood: string | null
           notes: string | null
+          orientation: string | null
           organization_id: string
           requests_generated: number
           updated_at: string
@@ -1149,12 +1153,16 @@ export type Database = {
         Insert: {
           active_calls_count?: number
           agent_id: string
+          cold_calls_count?: number
           created_at?: string
           deals_closed?: number
           id?: string
+          leads_taken_count?: number
           meetings_scheduled?: number
+          meetings_completed?: number
           mood?: string | null
           notes?: string | null
+          orientation?: string | null
           organization_id: string
           requests_generated?: number
           updated_at?: string
@@ -1163,12 +1171,16 @@ export type Database = {
         Update: {
           active_calls_count?: number
           agent_id?: string
+          cold_calls_count?: number
           created_at?: string
           deals_closed?: number
           id?: string
+          leads_taken_count?: number
           meetings_scheduled?: number
+          meetings_completed?: number
           mood?: string | null
           notes?: string | null
+          orientation?: string | null
           organization_id?: string
           requests_generated?: number
           updated_at?: string

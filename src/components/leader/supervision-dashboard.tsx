@@ -79,19 +79,45 @@ export function SupervisionDashboard() {
 
   const fetchAgentActivity = async (agentId: string) => {
     try {
-      // Fetch agent's requests
-      const requestsRes = await fetch(`/api/supervision/agent-activity?agentId=${agentId}&type=requests`);
+      const [requestsRes, meetingsRes, dealsRes, metricsRes, attendanceRes] = await Promise.all([
+        fetch(`/api/supervision/agent-activity?agentId=${agentId}&type=requests`),
+        fetch(`/api/supervision/agent-activity?agentId=${agentId}&type=meetings`),
+        fetch(`/api/supervision/agent-activity?agentId=${agentId}&type=deals`),
+        fetch(`/api/metrics?agentId=${agentId}`),
+        fetch(`/api/attendance/today?agentId=${agentId}`),
+      ]);
+
       const requests = requestsRes.ok ? (await requestsRes.json()).data : [];
-
-      // Fetch agent's meetings
-      const meetingsRes = await fetch(`/api/supervision/agent-activity?agentId=${agentId}&type=meetings`);
       const meetings = meetingsRes.ok ? (await meetingsRes.json()).data : [];
-
-      // Fetch agent's deals
-      const dealsRes = await fetch(`/api/supervision/agent-activity?agentId=${agentId}&type=deals`);
       const deals = dealsRes.ok ? (await dealsRes.json()).data : [];
 
-      setAgentActivity({ requests, meetings, deals });
+      const metricsResult = metricsRes.ok ? await metricsRes.json() : null;
+      const metrics = metricsResult?.data ?? null;
+
+      const attendanceResult = attendanceRes.ok ? await attendanceRes.json() : null;
+      const attendanceData = attendanceResult?.data ?? null;
+      const attendanceRecord = Array.isArray(attendanceData)
+        ? attendanceData.find((entry: any) => entry.agent_id === agentId) ?? null
+        : attendanceData;
+
+      const workflowStatus = {
+        isCheckedIn: Boolean(attendanceRecord?.check_in_time),
+        checkInTime: attendanceRecord?.check_in_time
+          ? new Date(attendanceRecord.check_in_time).toLocaleTimeString()
+          : null,
+        orientation: metrics?.orientation ?? null,
+        followUpCalls: metrics?.active_calls_count ?? 0,
+        leadsToday: metrics?.leads_taken_count ?? 0,
+        coldCalls: metrics?.cold_calls_count ?? 0,
+        newRequests: metrics?.requests_generated ?? 0,
+      };
+
+      setAgentActivity({
+        requests,
+        meetings,
+        deals,
+        workflow_status: workflowStatus,
+      });
     } catch (error) {
       console.error("Failed to fetch agent activity:", error);
     }
@@ -150,7 +176,7 @@ export function SupervisionDashboard() {
       {/* Selected Agent Details */}
       {selectedAgent && (
         <Card className="overflow-hidden rounded-2xl border-border/40">
-          <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-blue-50 border-b border-border/40">
+          <div className="px-6 py-4 bg-linear-to-r from-purple-50 to-blue-50 border-b border-border/40">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-xl bg-purple-100 flex items-center justify-center">
@@ -190,7 +216,7 @@ export function SupervisionDashboard() {
             {/* Overview Tab */}
             <TabsContent value="overview" className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 rounded-xl bg-gradient-to-br from-blue-50 to-transparent border border-blue-200/40">
+                <div className="p-4 rounded-xl bg-linear-to-br from-blue-50 to-transparent border border-blue-200/40">
                   <div className="flex items-center gap-2 mb-1">
                     <Phone className="h-4 w-4 text-blue-600" />
                     <p className="text-xs text-blue-700/70 font-medium">Calls</p>
@@ -199,7 +225,7 @@ export function SupervisionDashboard() {
                     {agentActivity.workflow_status?.followUpCalls || 0}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-gradient-to-br from-green-50 to-transparent border border-green-200/40">
+                <div className="p-4 rounded-xl bg-linear-to-br from-green-50 to-transparent border border-green-200/40">
                   <div className="flex items-center gap-2 mb-1">
                     <Users className="h-4 w-4 text-green-600" />
                     <p className="text-xs text-green-700/70 font-medium">Leads</p>
@@ -208,7 +234,7 @@ export function SupervisionDashboard() {
                     {agentActivity.workflow_status?.leadsToday || 0}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50 to-transparent border border-purple-200/40">
+                <div className="p-4 rounded-xl bg-linear-to-br from-purple-50 to-transparent border border-purple-200/40">
                   <div className="flex items-center gap-2 mb-1">
                     <FileText className="h-4 w-4 text-purple-600" />
                     <p className="text-xs text-purple-700/70 font-medium">Requests</p>
@@ -217,7 +243,7 @@ export function SupervisionDashboard() {
                     {agentActivity.requests?.length || 0}
                   </p>
                 </div>
-                <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50 to-transparent border border-amber-200/40">
+                <div className="p-4 rounded-xl bg-linear-to-br from-amber-50 to-transparent border border-amber-200/40">
                   <div className="flex items-center gap-2 mb-1">
                     <Calendar className="h-4 w-4 text-amber-600" />
                     <p className="text-xs text-amber-700/70 font-medium">Meetings</p>

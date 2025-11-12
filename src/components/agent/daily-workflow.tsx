@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,6 @@ import {
   MapPin,
   Building,
   Home,
-  ChevronRight,
   Plus,
   Check,
   Save,
@@ -28,29 +27,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type WorkflowData = {
-  date: string;
-  checkInTime: string | null;
-  checkOutTime: string | null;
-  orientation: "team" | "developer" | null;
-  followUpCalls: number;
-  leadsToday: number;
-  coldCalls: number;
-  newRequests: number;
-  meetingsScheduled: number;
-  meetingsCompleted: number;
-  mood: string | null;
-  notes: string;
-  location: string;
-  isCheckedIn: boolean;
-};
-
-const STORAGE_KEY = "brokmang_daily_workflow";
+type Orientation = "team" | "developer" | null;
 
 export function DailyWorkflow({ userId }: { userId: string }) {
   const [checkInTime, setCheckInTime] = useState<string | null>(null);
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null);
-  const [orientation, setOrientation] = useState<"team" | "developer" | null>(null);
+  const [orientation, setOrientation] = useState<Orientation>(null);
   const [followUpCalls, setFollowUpCalls] = useState(0);
   const [leadsToday, setLeadsToday] = useState(0);
   const [coldCalls, setColdCalls] = useState(0);
@@ -62,18 +44,115 @@ export function DailyWorkflow({ userId }: { userId: string }) {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [location, setLocation] = useState("Office");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [isMounted, setIsMounted] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [attendanceActionLoading, setAttendanceActionLoading] = useState(false);
+  const [isSyncingMetrics, setIsSyncingMetrics] = useState(false);
+  const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialSyncSkipRef = useRef(false);
 
-  // Get today's date + user ID as a unique key
-  const getTodayKey = () => {
-    const date = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-    return `${date}_${userId}`; // YYYY-MM-DD_user-id
+  const formatTime = (value: string | null) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleTimeString();
   };
 
-  // Mark component as mounted (client-side only)
+  // Load attendance + metrics from the backend on mount
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
+    let isCancelled = false;
+
+    const loadData = async () => {
+      try {
+        const [attendanceResponse, metricsResponse] = await Promise.all([
+          fetch("/api/attendance/today"),
+          fetch("/api/metrics"),
+        ]);
+
+        if (!isCancelled) {
+          if (attendanceResponse.ok) {
+            const attendanceResult = await attendanceResponse.json();
+            const rawAttendance = Array.isArray(attendanceResult.data)
+              ? (attendanceResult.data.find((entry: any) => entry.agent_id === userId) ?? null)
+              : attendanceResult.data ?? null;
+
+            if (rawAttendance) {
+              setIsCheckedIn(Boolean(rawAttendance.check_in_time));
+              setCheckInTime(rawAttendance.check_in_time ?? null);
+              setCheckOutTime(rawAttendance.check_out_time ?? null);
+              setLocation(rawAttendance.location_check_in ?? rawAttendance.location_check_out ?? "Office");
+            } else {
+              setIsCheckedIn(false);
+              setCheckInTime(null);
+              setCheckOutTime(null);
+              setLocation("Office");
+            }
+          } else {
+            setIsCheckedIn(false);
+            setCheckInTime(null);
+            setCheckOutTime(null);
+            setLocation("Office");
+          }
+
+          if (metricsResponse.ok) {
+            const metricsResult = await metricsResponse.json();
+            const metrics = metricsResult.data as
+              | (Record<string, unknown> & {
+                  active_calls_count?: number;
+                  leads_taken_count?: number;
+                  cold_calls_count?: number;
+                  meetings_scheduled?: number;
+                  meetings_completed?: number;
+                  requests_generated?: number;
+                  mood?: string | null;
+                  notes?: string | null;
+                  orientation?: string | null;
+                  updated_at?: string;
+                })
+              | null;
+
+            if (metrics) {
+              setFollowUpCalls(metrics.active_calls_count ?? 0);
+              setLeadsToday(metrics.leads_taken_count ?? 0);
+              setColdCalls(metrics.cold_calls_count ?? 0);
+              setMeetingsScheduled(metrics.meetings_scheduled ?? 0);
+              setMeetingsCompleted(metrics.meetings_completed ?? 0);
+              setNewRequests(metrics.requests_generated ?? 0);
+              setMood(metrics.mood ?? null);
+              setNotes(metrics.notes ?? "");
+              setOrientation(metrics.orientation === "team" || metrics.orientation === "developer" ? metrics.orientation : null);
+              setLastSaved(metrics.updated_at ? new Date(metrics.updated_at) : null);
+            } else {
+              setFollowUpCalls(0);
+              setLeadsToday(0);
+              setColdCalls(0);
+              setMeetingsScheduled(0);
+              setMeetingsCompleted(0);
+              setNewRequests(0);
+              setMood(null);
+              setNotes("");
+              setOrientation(null);
+              setLastSaved(null);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load workflow data:", error);
+      } finally {
+        if (!isCancelled) {
+          initialSyncSkipRef.current = true;
+          setIsInitialized(true);
+        }
+      }
+    };
+
+    void loadData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [userId]);
 
   // Listen for submission events to increment counters
   useEffect(() => {
@@ -92,42 +171,87 @@ export function DailyWorkflow({ userId }: { userId: string }) {
     };
   }, []);
 
-  // Load workflow data from localStorage on mount
-  useEffect(() => {
-    if (!isMounted) return;
-    
-    const todayKey = getTodayKey();
-    const stored = localStorage.getItem(`${STORAGE_KEY}_${todayKey}`);
-    if (stored) {
-      try {
-        const data: WorkflowData = JSON.parse(stored);
-        setCheckInTime(data.checkInTime);
-        setCheckOutTime(data.checkOutTime);
-        setOrientation(data.orientation);
-        setFollowUpCalls(data.followUpCalls);
-        setLeadsToday(data.leadsToday);
-        setColdCalls(data.coldCalls);
-        setNewRequests(data.newRequests);
-        setMeetingsScheduled(data.meetingsScheduled);
-        setMeetingsCompleted(data.meetingsCompleted);
-        setMood(data.mood);
-        setNotes(data.notes);
-        setLocation(data.location);
-        setIsCheckedIn(data.isCheckedIn);
-        setLastSaved(new Date(data.date));
-      } catch (error) {
-        console.error("Failed to load workflow data:", error);
-      }
-    }
-  }, [isMounted]);
+  const syncWorkflowMetrics = useCallback(async () => {
+    setIsSyncingMetrics(true);
+    try {
+      const response = await fetch("/api/metrics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callsCount: followUpCalls,
+          leadsCount: leadsToday,
+          coldCallsCount: coldCalls,
+          meetingsCount: meetingsScheduled,
+          meetingsCompletedCount: meetingsCompleted,
+          requestsCount: newRequests,
+          orientation,
+          mood,
+          notes: notes.trim().length > 0 ? notes : null,
+        }),
+      });
 
-  // Auto-save workflow data whenever it changes (client-side only)
+      if (response.ok) {
+        const result = await response.json();
+        const updatedAt = result.data?.updated_at as string | undefined;
+        setLastSaved(updatedAt ? new Date(updatedAt) : new Date());
+      } else {
+        const error = await response.json().catch(() => ({}));
+        console.error("Failed to sync workflow metrics:", error);
+      }
+    } catch (error) {
+      console.error("Failed to sync workflow metrics:", error);
+    } finally {
+      setIsSyncingMetrics(false);
+    }
+  }, [coldCalls, followUpCalls, leadsToday, meetingsCompleted, meetingsScheduled, mood, newRequests, notes, orientation]);
+
+  // Debounced persistence for workflow changes
   useEffect(() => {
-    if (!isMounted) return;
-    
-    const todayKey = getTodayKey();
-    const workflowData: WorkflowData = {
-      date: new Date().toISOString(),
+    if (!isInitialized) return;
+
+    if (initialSyncSkipRef.current) {
+      initialSyncSkipRef.current = false;
+      return;
+    }
+
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+
+    syncTimeoutRef.current = setTimeout(() => {
+      void syncWorkflowMetrics();
+    }, 600);
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [
+    isInitialized,
+    coldCalls,
+    followUpCalls,
+    leadsToday,
+    meetingsCompleted,
+    meetingsScheduled,
+    mood,
+    newRequests,
+    notes,
+    orientation,
+    syncWorkflowMetrics,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const broadcastWorkflowUpdate = useCallback(() => {
+    const detail = {
+      isCheckedIn,
       checkInTime,
       checkOutTime,
       orientation,
@@ -138,41 +262,105 @@ export function DailyWorkflow({ userId }: { userId: string }) {
       meetingsScheduled,
       meetingsCompleted,
       mood,
-      notes,
-      location,
-      isCheckedIn,
     };
-    
-    localStorage.setItem(`${STORAGE_KEY}_${todayKey}`, JSON.stringify(workflowData));
-    setLastSaved(new Date());
+
+    window.dispatchEvent(new CustomEvent("workflow-stats-updated", { detail }));
   }, [
-    isMounted,
     checkInTime,
     checkOutTime,
-    orientation,
-    followUpCalls,
-    leadsToday,
     coldCalls,
-    newRequests,
-    meetingsScheduled,
-    meetingsCompleted,
-    mood,
-    notes,
-    location,
+    followUpCalls,
     isCheckedIn,
+    leadsToday,
+    meetingsCompleted,
+    meetingsScheduled,
+    mood,
+    newRequests,
+    orientation,
   ]);
 
-  const handleCheckIn = () => {
-    const now = new Date();
-    setCheckInTime(now.toLocaleTimeString());
-    setIsCheckedIn(true);
-  };
+  useEffect(() => {
+    if (!isInitialized) return;
+    broadcastWorkflowUpdate();
+  }, [broadcastWorkflowUpdate, isInitialized]);
 
-  const handleCheckOut = () => {
-    const now = new Date();
-    setCheckOutTime(now.toLocaleTimeString());
-    // Submit all data here
-  };
+  const handleCheckIn = useCallback(async () => {
+    if (attendanceActionLoading || isCheckedIn) return;
+    setAttendanceActionLoading(true);
+    try {
+      const response = await fetch("/api/attendance/check-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const attendance = result.data as
+          | {
+              check_in_time?: string | null;
+              location_check_in?: string | null;
+            }
+          | undefined;
+        setIsCheckedIn(true);
+        setCheckInTime(attendance?.check_in_time ?? new Date().toISOString());
+        setLocation(attendance?.location_check_in ?? location);
+      } else {
+        const error = await response.json().catch(() => ({}));
+        console.error("Failed to check in:", error);
+      }
+    } catch (error) {
+      console.error("Failed to check in:", error);
+    } finally {
+      setAttendanceActionLoading(false);
+    }
+  }, [attendanceActionLoading, isCheckedIn, location]);
+
+  const handleCheckOut = useCallback(async () => {
+    if (attendanceActionLoading || !isCheckedIn || checkOutTime) return;
+    setAttendanceActionLoading(true);
+    try {
+      const response = await fetch("/api/attendance/check-out", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const attendance = result.data as
+          | {
+              check_out_time?: string | null;
+              location_check_out?: string | null;
+            }
+          | undefined;
+        setCheckOutTime(attendance?.check_out_time ?? new Date().toISOString());
+        if (attendance?.location_check_out) {
+          setLocation(attendance.location_check_out);
+        }
+      } else {
+        const error = await response.json().catch(() => ({}));
+        console.error("Failed to check out:", error);
+      }
+    } catch (error) {
+      console.error("Failed to check out:", error);
+    } finally {
+      setAttendanceActionLoading(false);
+    }
+  }, [attendanceActionLoading, checkOutTime, isCheckedIn, location]);
+
+  useEffect(() => {
+    const handleQuickCheckIn = () => {
+      if (!isCheckedIn) {
+        void handleCheckIn();
+      }
+    };
+
+    window.addEventListener("quick-check-in", handleQuickCheckIn);
+    return () => {
+      window.removeEventListener("quick-check-in", handleQuickCheckIn);
+    };
+  }, [handleCheckIn, isCheckedIn]);
 
   const moodOptions = [
     { emoji: "😄", label: "Great", value: "great" },
@@ -182,26 +370,10 @@ export function DailyWorkflow({ userId }: { userId: string }) {
     { emoji: "😞", label: "Difficult", value: "difficult" },
   ];
 
-  // Expose workflow data to parent via custom events
-  useEffect(() => {
-    if (!isMounted) return;
-    
-    const workflowStats = {
-      followUpCalls,
-      leadsToday,
-      coldCalls,
-      newRequests,
-      meetingsScheduled,
-      meetingsCompleted,
-    };
-    
-    window.dispatchEvent(new CustomEvent("workflow-stats-updated", { detail: workflowStats }));
-  }, [isMounted, followUpCalls, leadsToday, coldCalls, newRequests, meetingsScheduled, meetingsCompleted]);
-
   return (
     <Card className="overflow-hidden rounded-2xl border-border/40 shadow-md">
       {/* Header */}
-      <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+      <div className="px-6 py-4 bg-linear-to-r from-blue-600 to-blue-700 text-white">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center">
@@ -213,11 +385,18 @@ export function DailyWorkflow({ userId }: { userId: string }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {lastSaved && (
+            {isSyncingMetrics ? (
+              <div className="flex items-center gap-1.5 text-blue-100 text-xs mr-2">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                <span>Saving...</span>
+              </div>
+            ) : (
+              lastSaved && (
               <div className="flex items-center gap-1.5 text-blue-100 text-xs mr-2">
                 <Save className="h-3 w-3" />
                 <span suppressHydrationWarning>Saved {lastSaved.toLocaleTimeString()}</span>
               </div>
+              )
             )}
             <Badge className="bg-white/20 text-white border-white/30" suppressHydrationWarning>
               {isCheckedIn ? "In Progress" : "Not Started"}
@@ -270,14 +449,14 @@ export function DailyWorkflow({ userId }: { userId: string }) {
               </div>
               <Button onClick={handleCheckIn} className="w-full bg-blue-600 hover:bg-blue-700">
                 <LogIn className="h-4 w-4 mr-2" />
-                Check In Now
+                {attendanceActionLoading ? "Checking In..." : "Check In Now"}
               </Button>
             </div>
           ) : (
             <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium text-green-700">Checked in at {checkInTime}</span>
+                <span className="text-sm font-medium text-green-700">Checked in at {formatTime(checkInTime)}</span>
               </div>
               <Badge className="bg-green-100 text-green-700 border-green-200">{location}</Badge>
             </div>
@@ -572,10 +751,10 @@ export function DailyWorkflow({ userId }: { userId: string }) {
                   <Button
                     onClick={handleCheckOut}
                     className="w-full bg-blue-600 hover:bg-blue-700"
-                    disabled={!mood}
+                    disabled={!mood || attendanceActionLoading}
                   >
                     <LogOut className="h-4 w-4 mr-2" />
-                    Check Out & Submit
+                    {attendanceActionLoading ? "Checking Out..." : "Check Out & Submit"}
                   </Button>
                   {!mood && (
                     <p className="text-xs text-amber-600">Please select your mood before checking out</p>
@@ -585,7 +764,7 @@ export function DailyWorkflow({ userId }: { userId: string }) {
                 <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 border border-green-200">
                   <div className="flex items-center gap-2">
                     <Check className="h-4 w-4 text-green-600" />
-                    <span className="text-sm font-medium text-green-700">Checked out at {checkOutTime}</span>
+                    <span className="text-sm font-medium text-green-700">Checked out at {formatTime(checkOutTime)}</span>
                   </div>
                   <Badge className="bg-green-100 text-green-700 border-green-200">Complete</Badge>
                 </div>

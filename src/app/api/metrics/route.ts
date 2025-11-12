@@ -8,10 +8,14 @@ import type { Database } from "@/lib/supabase";
 
 const updateMetricsSchema = z.object({
   callsCount: z.number().min(0).optional(),
+  leadsCount: z.number().min(0).optional(),
+  coldCallsCount: z.number().min(0).optional(),
   meetingsCount: z.number().min(0).optional(),
+  meetingsCompletedCount: z.number().min(0).optional(),
   requestsCount: z.number().min(0).optional(),
   dealsCount: z.number().min(0).optional(),
-  mood: z.enum(["great", "good", "okay", "stressed", "difficult"]).optional(),
+  orientation: z.enum(["team", "developer"]).nullable().optional(),
+  mood: z.enum(["great", "good", "okay", "stressed", "difficult"]).nullable().optional(),
   notes: z.string().max(1000).optional(),
 });
 
@@ -116,10 +120,14 @@ export async function POST(request: Request) {
     agent_id: session.user.id,
     work_date: today,
     active_calls_count: parsed.data.callsCount ?? 0,
+    leads_taken_count: parsed.data.leadsCount ?? 0,
+    cold_calls_count: parsed.data.coldCallsCount ?? 0,
     meetings_scheduled: parsed.data.meetingsCount ?? 0,
+    meetings_completed: parsed.data.meetingsCompletedCount ?? 0,
     requests_generated: parsed.data.requestsCount ?? 0,
     deals_closed: parsed.data.dealsCount ?? 0,
     mood: parsed.data.mood ?? null,
+    orientation: parsed.data.orientation ?? null,
     notes: parsed.data.notes ?? null,
   } satisfies Database["public"]["Tables"]["daily_agent_metrics"]["Insert"];
 
@@ -197,14 +205,26 @@ export async function PATCH(request: Request) {
   if (parsed.data.meetingsCount !== undefined) {
     updatePayload.meetings_scheduled = (existingMetric.meetings_scheduled || 0) + parsed.data.meetingsCount;
   }
+  if (parsed.data.meetingsCompletedCount !== undefined) {
+    updatePayload.meetings_completed = (existingMetric.meetings_completed || 0) + parsed.data.meetingsCompletedCount;
+  }
   if (parsed.data.requestsCount !== undefined) {
     updatePayload.requests_generated = (existingMetric.requests_generated || 0) + parsed.data.requestsCount;
   }
   if (parsed.data.dealsCount !== undefined) {
     updatePayload.deals_closed = (existingMetric.deals_closed || 0) + parsed.data.dealsCount;
   }
+  if (parsed.data.leadsCount !== undefined) {
+    updatePayload.leads_taken_count = (existingMetric.leads_taken_count || 0) + parsed.data.leadsCount;
+  }
+  if (parsed.data.coldCallsCount !== undefined) {
+    updatePayload.cold_calls_count = (existingMetric.cold_calls_count || 0) + parsed.data.coldCallsCount;
+  }
   if (parsed.data.mood !== undefined) {
     updatePayload.mood = parsed.data.mood;
+  }
+  if (parsed.data.orientation !== undefined) {
+    updatePayload.orientation = parsed.data.orientation;
   }
   if (parsed.data.notes !== undefined) {
     updatePayload.notes = parsed.data.notes;
