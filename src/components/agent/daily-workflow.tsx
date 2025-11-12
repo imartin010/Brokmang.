@@ -198,25 +198,6 @@ export function DailyWorkflow({ userId }: { userId: string }) {
     window.dispatchEvent(new CustomEvent("workflow-stats-updated", { detail: workflowStats }));
   }, [isMounted, followUpCalls, leadsToday, coldCalls, newRequests, meetingsScheduled, meetingsCompleted]);
 
-  if (!isMounted) {
-    return (
-      <Card className="overflow-hidden rounded-2xl border-border/40 shadow-md">
-        <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <CheckCircle2 className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold">Daily Workflow</h2>
-              <p className="text-xs text-blue-100">Loading...</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6"><div className="h-64 animate-pulse bg-muted/20 rounded-lg" /></div>
-      </Card>
-    );
-  }
-
   return (
     <Card className="overflow-hidden rounded-2xl border-border/40 shadow-md">
       {/* Header */}
@@ -245,7 +226,7 @@ export function DailyWorkflow({ userId }: { userId: string }) {
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6" suppressHydrationWarning>
         {/* Step 1: Check In */}
         <WorkflowSection
           title="1. Check In"

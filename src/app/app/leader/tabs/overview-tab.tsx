@@ -1,6 +1,34 @@
 "use client";
 
-import { TeamLeaderDailyWorkflow } from "@/components/leader/team-leader-daily-workflow";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card } from "@/components/ui/card";
+import { Users } from "lucide-react";
+
+const TeamLeaderDailyWorkflow = dynamic(
+  () => import("@/components/leader/team-leader-daily-workflow").then((mod) => mod.TeamLeaderDailyWorkflow),
+  { ssr: false, loading: () => <WorkflowSkeleton /> }
+);
+
+function WorkflowSkeleton() {
+  return (
+    <Card className="overflow-hidden rounded-2xl border-border/40 shadow-md">
+      <div className="px-6 py-4 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-xl" />
+          <div>
+            <Skeleton className="h-5 w-48 mb-1" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+        </div>
+      </div>
+      <div className="p-6">
+        <Skeleton className="h-64 w-full" />
+      </div>
+    </Card>
+  );
+}
+
 import { PendingRequestsList } from "@/components/requests/pending-requests-list";
 import { AgentSupervisionPanel } from "@/components/supervision/agent-supervision-panel";
 import { DailyRatingForm } from "@/components/ratings/daily-rating-form";
