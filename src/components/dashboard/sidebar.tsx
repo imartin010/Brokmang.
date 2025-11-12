@@ -27,6 +27,8 @@ import {
   CheckCircle2,
   AlertCircle,
   TrendingUp,
+  Eye,
+  Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRoleLandingPath, type UserRole } from "@/lib/auth";
@@ -198,7 +200,7 @@ export function DashboardSidebar({
           </Button>
         </div>
 
-        {/* Section 1: Quick Stats Panel */}
+        {/* Section 1: Quick Stats Panel - Sales Agent */}
         {userRole === "sales_agent" && (
           <>
             <div className="px-4 py-4 border-b border-border/40">
@@ -316,6 +318,121 @@ export function DashboardSidebar({
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium">Pipeline</p>
                     <p className="text-[10px] text-muted-foreground">36.5M EGP</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Section 1: Quick Stats Panel - Team Leader */}
+        {userRole === "team_leader" && (
+          <>
+            <div className="px-4 py-4 border-b border-border/40">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Quick Stats
+              </p>
+              <div className="space-y-2.5">
+                {/* Check-in Status */}
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-xs font-medium">Check-in</span>
+                  </div>
+                  <Badge variant="default" className="text-[10px] h-5">
+                    Done
+                  </Badge>
+                </div>
+
+                {/* Workflow Progress */}
+                <div className="p-2.5 rounded-lg bg-purple-50 border border-purple-200/40">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium text-purple-700">Daily Routine</span>
+                    <span className="text-xs font-bold text-purple-700">2/8</span>
+                  </div>
+                  <div className="w-full bg-purple-200/40 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="bg-purple-600 h-full transition-all duration-500"
+                      style={{ width: "25%" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="px-4 py-4 border-b border-border/40">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Quick Actions
+              </p>
+              <div className="space-y-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 text-xs"
+                  onClick={() => window.location.hash = "pending-requests-section"}
+                >
+                  <FileText className="h-3.5 w-3.5 mr-2" />
+                  Review Requests
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 text-xs"
+                  onClick={() => window.location.hash = "rating-section"}
+                >
+                  <Star className="h-3.5 w-3.5 mr-2" />
+                  Rate Agents
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 text-xs"
+                  onClick={() => window.location.hash = "supervision-section"}
+                >
+                  <Eye className="h-3.5 w-3.5 mr-2" />
+                  Supervision
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start h-9 text-xs"
+                  onClick={() => {
+                    const tabTrigger = document.querySelector('[value="supervision"]') as HTMLElement;
+                    if (tabTrigger) tabTrigger.click();
+                  }}
+                >
+                  <Eye className="h-3.5 w-3.5 mr-2" />
+                  Agent Monitor
+                </Button>
+              </div>
+            </div>
+
+            {/* Today's Priorities */}
+            <div className="px-4 py-4 border-b border-border/40">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Today's Priorities
+              </p>
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 p-2 rounded-lg hover:bg-muted/30 transition-colors cursor-pointer">
+                  <FileText className="h-3.5 w-3.5 text-amber-600 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium">Approve Requests</p>
+                    <p className="text-[10px] text-muted-foreground">Review pending</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 p-2 rounded-lg hover:bg-muted/30 transition-colors">
+                  <Star className="h-3.5 w-3.5 text-blue-600 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium">Daily Ratings</p>
+                    <p className="text-[10px] text-muted-foreground">Rate team performance</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 p-2 rounded-lg hover:bg-muted/30 transition-colors">
+                  <Eye className="h-3.5 w-3.5 text-purple-600 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium">Monitor Agents</p>
+                    <p className="text-[10px] text-muted-foreground">Under supervision</p>
                   </div>
                 </div>
               </div>
