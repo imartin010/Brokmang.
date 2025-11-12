@@ -174,20 +174,22 @@ export function DailyWorkflow({ userId }: { userId: string }) {
   const syncWorkflowMetrics = useCallback(async () => {
     setIsSyncingMetrics(true);
     try {
+      const payload = {
+        callsCount: followUpCalls ?? 0,
+        leadsCount: leadsToday ?? 0,
+        coldCallsCount: coldCalls ?? 0,
+        meetingsCount: meetingsScheduled ?? 0,
+        meetingsCompletedCount: meetingsCompleted ?? 0,
+        requestsCount: newRequests ?? 0,
+        orientation: orientation ?? null,
+        mood: mood ?? null,
+        notes: notes.trim().length > 0 ? notes.trim() : null,
+      };
+
       const response = await fetch("/api/metrics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callsCount: followUpCalls,
-          leadsCount: leadsToday,
-          coldCallsCount: coldCalls,
-          meetingsCount: meetingsScheduled,
-          meetingsCompletedCount: meetingsCompleted,
-          requestsCount: newRequests,
-          orientation,
-          mood,
-          notes: notes.trim().length > 0 ? notes : null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -195,11 +197,39 @@ export function DailyWorkflow({ userId }: { userId: string }) {
         const updatedAt = result.data?.updated_at as string | undefined;
         setLastSaved(updatedAt ? new Date(updatedAt) : new Date());
       } else {
-        const error = await response.json().catch(() => ({}));
-        console.error("Failed to sync workflow metrics:", error);
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            if (typeof errorData.error === "string") {
+              errorMessage = errorData.error;
+            } else if (errorData.error.message) {
+              errorMessage = errorData.error.message;
+            } else if (errorData.error._errors) {
+              errorMessage = `Validation error: ${JSON.stringify(errorData.error._errors)}`;
+            } else {
+              errorMessage = JSON.stringify(errorData.error);
+            }
+          }
+        } catch {
+          // If JSON parsing fails, use the status text
+          const text = await response.text().catch(() => "");
+          if (text) {
+            errorMessage = text;
+          }
+        }
+        console.error("Failed to sync workflow metrics:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorMessage,
+          payload,
+        });
       }
     } catch (error) {
       console.error("Failed to sync workflow metrics:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message, error.stack);
+      }
     } finally {
       setIsSyncingMetrics(false);
     }

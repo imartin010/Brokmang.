@@ -1,5 +1,3 @@
-"use server";
-
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -16,7 +14,7 @@ const updateMetricsSchema = z.object({
   dealsCount: z.number().min(0).optional(),
   orientation: z.enum(["team", "developer"]).nullable().optional(),
   mood: z.enum(["great", "good", "okay", "stressed", "difficult"]).nullable().optional(),
-  notes: z.string().max(1000).optional(),
+  notes: z.string().max(1000).nullable().optional(),
 });
 
 export async function GET(request: Request) {
