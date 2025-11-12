@@ -9,30 +9,8 @@ import { MyMeetingsList } from "@/components/meetings/my-meetings-list";
 import { PipelineWeight } from "@/components/requests/pipeline-weight";
 import { WidgetCard } from "@/components/dashboard/widget-card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Card } from "@/components/ui/card";
-import { Users } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Database } from "@/lib/supabase";
-
-function WorkflowSkeleton() {
-  return (
-    <Card className="overflow-hidden rounded-2xl border-border/40 shadow-md">
-      <div className="px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-xl" />
-          <div>
-            <Skeleton className="h-5 w-32 mb-1" />
-            <Skeleton className="h-3 w-48" />
-          </div>
-        </div>
-      </div>
-      <div className="p-6">
-        <Skeleton className="h-64 w-full" />
-      </div>
-    </Card>
-  );
-}
 
 type AgentSummary = Database["public"]["Tables"]["agent_dashboard_summary"]["Row"];
 type AgentActivity = Database["public"]["Tables"]["agent_daily_activity"]["Row"];

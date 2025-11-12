@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ type InsightRecord = {
     structured?: StructuredInsightPayload | null;
     error?: string;
     model?: string;
+    requested_model?: string;
     tokens_used?: number;
   } | null;
 };
@@ -44,7 +45,7 @@ export function InsightsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
-  const fetchInsights = async () => {
+  const fetchInsights = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -59,7 +60,7 @@ export function InsightsPanel() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const generateInsight = async () => {
     setGenerating(true);
@@ -88,7 +89,7 @@ export function InsightsPanel() {
 
   useEffect(() => {
     fetchInsights();
-  }, []);
+  }, [fetchInsights]);
 
   useEffect(() => {
     const hasPending = insights.some((i) => i.status === "pending" || i.status === "processing");
@@ -99,8 +100,7 @@ export function InsightsPanel() {
     }, 4000);
 
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [insights]);
+  }, [fetchInsights, insights]);
 
   const mostRecent = insights[0];
   const structured = useMemo(() => mostRecent?.output?.structured ?? null, [mostRecent]);
@@ -198,11 +198,20 @@ const InsightHeader = ({ insight, compact = false }: { insight: InsightRecord; c
       {getStatusBadge(insight.status)}
       <span className="text-xs text-muted-foreground">Generated {formatDate(insight.created_at)}</span>
     </div>
-    {insight.output?.model ? (
-      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-        {insight.output.model}
-      </Badge>
-    ) : null}
+    <div className="flex flex-wrap items-center gap-2">
+      {insight.output?.model ? (
+        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+          {insight.output.model}
+        </Badge>
+      ) : null}
+      {insight.output?.requested_model &&
+      insight.output?.model &&
+      insight.output.requested_model !== insight.output.model ? (
+        <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
+          Fallback from {insight.output.requested_model}
+        </Badge>
+      ) : null}
+    </div>
   </div>
 );
 

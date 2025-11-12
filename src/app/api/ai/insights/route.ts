@@ -5,7 +5,11 @@ import { getSupabaseServerClient } from "@/lib/supabase/server-client";
 import { getSupabaseServiceRoleClient } from "@/lib/supabase/admin-client";
 import type { Database } from "@/lib/supabase";
 
-type SupportedRole = "team_leader" | "sales_manager" | "business_unit_head" | "ceo" | "admin";
+type SupportedRole = "team_leader" | "sales_manager" | "business_unit_head" | "ceo";
+
+const SUPPORTED_AI_ROLES: SupportedRole[] = ["team_leader", "sales_manager", "business_unit_head", "ceo"];
+const PRIMARY_MODEL = process.env.OPENAI_INSIGHTS_MODEL ?? "chatgpt-5";
+const FALLBACK_MODEL = process.env.OPENAI_INSIGHTS_FALLBACK_MODEL ?? "chatgpt-4o-latest";
 
 type KeyMetric = {
   title: string;
@@ -119,7 +123,7 @@ const sanitizeForPrompt = (value: unknown) => {
   const stringifySafe = (input: unknown) => {
     try {
       return JSON.stringify(input, null, 2);
-    } catch (error) {
+    } catch {
       return JSON.stringify(String(input));
     }
   };
@@ -391,9 +395,8 @@ export async function POST(request: Request) {
   const profile = profileData as { role: string; organization_id: string };
   const { role, organization_id } = profile;
 
-  // Agents don't get AI insights
-  if (role === "sales_agent") {
-    return NextResponse.json({ error: "AI insights not available for sales agents" }, { status: 403 });
+  if (!SUPPORTED_AI_ROLES.includes(role as SupportedRole)) {
+    return NextResponse.json({ error: "AI insights are currently available for team leaders, managers, business unit heads, and the CEO." }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -436,23 +439,9 @@ export async function POST(request: Request) {
 
   const insightRecord = insightRecordData as { id: string };
 
-  try {
-    const supportedRole = role === "admin" ? "ceo" : (role as SupportedRole);
-    const context = await gatherRoleContext(
-      ["team_leader", "sales_manager", "business_unit_head", "ceo"].includes(supportedRole)
-        ? (supportedRole as SupportedRole)
-        : "ceo",
-      supabase,
-      session.user.id,
-      organization_id,
-    );
-
-    // Generate prompt based on role
-    const prompt = buildPrompt(context);
-
-    // Call OpenAI API
-    const completion = await openai.chat.completions.create({
-      model: "chatgpt-5",
+  const invokeModel = async (model: string, prompt: string) =>
+    openai.chat.completions.create({
+      model,
       messages: [
         {
           role: "system",
@@ -468,6 +457,59 @@ export async function POST(request: Request) {
       temperature: 0.4,
     });
 
+  const isModelNotFoundError = (err: unknown) => {
+    if (err && typeof err === "object") {
+      const status = (err as { status?: number }).status;
+      if (status === 404) {
+        return true;
+      }
+      const message = (err as { message?: string }).message;
+      if (typeof message === "string" && message.toLowerCase().includes("does not exist")) {
+        return true;
+      }
+    }
+    if (typeof err === "string" && err.toLowerCase().includes("does not exist")) {
+      return true;
+    }
+    return false;
+  };
+
+  try {
+    const supportedRole = role as SupportedRole;
+    const context = await gatherRoleContext(supportedRole, supabase, session.user.id, organization_id);
+    const prompt = buildPrompt(context);
+
+    const modelPreferences = [
+      PRIMARY_MODEL,
+      ...(FALLBACK_MODEL && FALLBACK_MODEL !== PRIMARY_MODEL ? [FALLBACK_MODEL] : []),
+    ];
+
+    let completion: Awaited<ReturnType<typeof invokeModel>> | null = null;
+    let modelUsed = PRIMARY_MODEL;
+    let lastError: unknown;
+
+    for (const candidateModel of modelPreferences) {
+      try {
+        const response = await invokeModel(candidateModel, prompt);
+        if (response.choices.length === 0) {
+          lastError = new Error("Model returned no choices");
+          continue;
+        }
+        completion = response;
+        modelUsed = candidateModel;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (!isModelNotFoundError(error)) {
+          break;
+        }
+      }
+    }
+
+    if (!completion) {
+      throw lastError instanceof Error ? lastError : new Error("Failed to generate insight");
+    }
+
     const aiResponse = completion.choices[0]?.message?.content ?? "No insights generated.";
     const structured = parseStructuredInsight(aiResponse);
 
@@ -475,7 +517,8 @@ export async function POST(request: Request) {
     const updatePayload = {
       status: "completed" as const,
       output: {
-        model: "chatgpt-5",
+        requested_model: PRIMARY_MODEL,
+        model: modelUsed,
         raw_text: aiResponse,
         structured,
         tokens_used: completion.usage?.total_tokens ?? 0,
@@ -495,12 +538,13 @@ export async function POST(request: Request) {
       console.error("Failed to update insight record:", updateError);
       return NextResponse.json({ error: "Failed to save insights" }, { status: 500 });
     }
-
     return NextResponse.json({
       id: insightRecord.id,
       status: "completed",
       output: updatePayload.output,
       message: "Insights generated successfully",
+      fallbackUsed: updatePayload.output.model !== PRIMARY_MODEL,
+      requestedModel: PRIMARY_MODEL,
     });
   } catch (error) {
     // Update insight record with error
