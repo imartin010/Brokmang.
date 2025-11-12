@@ -31,6 +31,12 @@ const deriveDisplayName = (user: User) => {
 export const ensureProfileForUser = async (user: User): Promise<ProfileRow | null> => {
   const supabase = getSupabaseServiceRoleClient();
 
+  // Log for debugging
+  console.log("[ensureProfileForUser] Checking profile for user:", {
+    userId: user.id,
+    email: user.email,
+  });
+
   const { data: existingProfile, error: selectError } = await supabase
     .from("profiles")
     .select("id, role, organization_id, full_name, preferred_name, email, avatar_url, metadata")
@@ -38,7 +44,13 @@ export const ensureProfileForUser = async (user: User): Promise<ProfileRow | nul
     .maybeSingle();
 
   if (selectError) {
-    console.error("Failed to load user profile", selectError);
+    console.error("[ensureProfileForUser] Failed to load user profile", {
+      error: selectError.message,
+      code: selectError.code,
+      details: selectError.details,
+      hint: selectError.hint,
+      userId: user.id,
+    });
     throw selectError;
   }
 

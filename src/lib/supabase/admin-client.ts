@@ -27,3 +27,7 @@ export const getSupabaseServiceRoleClient = (): SupabaseClient<Database> => {
 
   return serviceRoleClient;
 };
+
+export const resetSupabaseServiceRoleClient = (): void => {
+  serviceRoleClient = null;
+};
