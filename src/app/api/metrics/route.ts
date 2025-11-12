@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server-client";
 import type { Database } from "@/lib/supabase";
+import { getSupabaseServiceRoleClient } from "@/lib/supabase/admin-client";
 
 const updateMetricsSchema = z.object({
   callsCount: z.number().min(0).optional(),
@@ -19,6 +20,7 @@ const updateMetricsSchema = z.object({
 
 export async function GET(request: Request) {
   const supabase = await getSupabaseServerClient();
+  const serviceSupabase = getSupabaseServiceRoleClient();
 
   const {
     data: { session },
@@ -33,7 +35,7 @@ export async function GET(request: Request) {
   const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
 
   // Get user profile
-  const profileResult = await supabase
+  const profileResult = await serviceSupabase
     .from("profiles")
     .select("organization_id, role")
     .eq("id", session.user.id)
@@ -56,7 +58,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const { data: metricsData, error } = await supabase
+  const { data: metricsData, error } = await serviceSupabase
     .from("daily_agent_metrics")
     .select("*")
     .eq("agent_id", targetAgentId)
@@ -72,6 +74,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const supabase = await getSupabaseServerClient();
+  const serviceSupabase = getSupabaseServiceRoleClient();
 
   const {
     data: { session },
@@ -89,7 +92,7 @@ export async function POST(request: Request) {
   }
 
   // Get user profile
-  const profileResult = await supabase
+  const profileResult = await serviceSupabase
     .from("profiles")
     .select("organization_id")
     .eq("id", session.user.id)
@@ -106,7 +109,7 @@ export async function POST(request: Request) {
   const today = new Date().toISOString().split("T")[0];
 
   // Check if metrics already exist for today
-  const existing = await supabase
+  const existing = await serviceSupabase
     .from("daily_agent_metrics")
     .select("id")
     .eq("agent_id", session.user.id)
@@ -129,40 +132,28 @@ export async function POST(request: Request) {
     notes: parsed.data.notes ?? null,
   } satisfies Database["public"]["Tables"]["daily_agent_metrics"]["Insert"];
 
-  let result;
-  if (existing.data) {
-    // Update existing
-    const existingMetric = existing.data as Database["public"]["Tables"]["daily_agent_metrics"]["Row"];
-    const updatePayload = metricsPayload as Database["public"]["Tables"]["daily_agent_metrics"]["Update"];
-    // Supabase type inference limitation - use unknown cast to bypass type checking
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JSONB type inference limitation
-    const updateFn = (supabase.from("daily_agent_metrics") as unknown as { update: (payload: any) => any }).update(updatePayload);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JSONB type inference limitation
-    const { data: metricsData, error } = await (updateFn as any)
-      .eq("id", existingMetric.id)
-      .select("*")
-      .maybeSingle();
-    result = { data: metricsData, error };
-  } else {
-    // Create new
-    const { data: metricsData, error } = await (supabase
-      .from("daily_agent_metrics")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JSONB type inference limitation
-      .insert(metricsPayload as any) as any)
-      .select("*")
-      .maybeSingle();
-    result = { data: metricsData, error };
+  const { data: metricsData, error } = await serviceSupabase
+    .from("daily_agent_metrics")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase typing limitation for upsert conflict keys
+    .upsert(metricsPayload as any, { onConflict: "agent_id,work_date" })
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[metrics][POST] Failed to upsert metrics", {
+      error: error.message,
+      payload: metricsPayload,
+      userId: session.user.id,
+    });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (result.error) {
-    return NextResponse.json({ error: result.error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ data: result.data }, { status: existing.data ? 200 : 201 });
+  return NextResponse.json({ data: metricsData }, { status: existing.data ? 200 : 201 });
 }
 
 export async function PATCH(request: Request) {
   const supabase = await getSupabaseServerClient();
+  const serviceSupabase = getSupabaseServiceRoleClient();
 
   const {
     data: { session },
@@ -182,12 +173,20 @@ export async function PATCH(request: Request) {
   const today = new Date().toISOString().split("T")[0];
 
   // Get existing metrics
-  const { data: existingData } = await supabase
+  const { data: existingData, error: existingError } = await serviceSupabase
     .from("daily_agent_metrics")
     .select("*")
     .eq("agent_id", session.user.id)
     .eq("work_date", today)
     .maybeSingle();
+
+  if (existingError) {
+    console.error("[metrics][PATCH] Failed to fetch existing metrics", {
+      error: existingError.message,
+      userId: session.user.id,
+    });
+    return NextResponse.json({ error: existingError.message }, { status: 500 });
+  }
 
   if (!existingData) {
     return NextResponse.json({ error: "No metrics found for today. Use POST to create." }, { status: 404 });
@@ -231,15 +230,33 @@ export async function PATCH(request: Request) {
   const updatePayloadTyped = updatePayload as Database["public"]["Tables"]["daily_agent_metrics"]["Update"];
 
   // Supabase type inference limitation - use unknown cast to bypass type checking
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JSONB type inference limitation
-  const updateFn = (supabase.from("daily_agent_metrics") as unknown as { update: (payload: any) => any }).update(updatePayloadTyped);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JSONB type inference limitation
-  const { data: metricsData, error } = await (updateFn as any)
+  const updateFn = (
+    serviceSupabase.from("daily_agent_metrics") as unknown as {
+      update: (
+        payload: Database["public"]["Tables"]["daily_agent_metrics"]["Update"],
+      ) => {
+        eq: (column: string, value: unknown) => {
+          select: (columns?: string) => {
+            maybeSingle: () => Promise<{
+              data: Database["public"]["Tables"]["daily_agent_metrics"]["Row"] | null;
+              error: { message: string } | null;
+            }>;
+          };
+        };
+      };
+    }
+  ).update(updatePayloadTyped);
+  const { data: metricsData, error } = await updateFn
     .eq("id", existingMetric.id)
     .select("*")
     .maybeSingle();
 
   if (error) {
+    console.error("[metrics][PATCH] Failed to update metrics", {
+      error: error.message,
+      payload: updatePayload,
+      userId: session.user.id,
+    });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
