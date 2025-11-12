@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Eye, EyeOff, Users } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type Agent = {
   id: string;
@@ -19,6 +20,7 @@ export function AgentSupervisionPanel() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchTeamAgents();
@@ -67,10 +69,18 @@ export function AgentSupervisionPanel() {
         
         if (response.ok) {
           await fetchTeamAgents();
-          alert("Agent supervision enabled successfully!");
+          notify({
+            variant: "success",
+            title: "Supervision enabled",
+            message: "Agent supervision enabled successfully.",
+          });
         } else {
           console.error("Supervision error:", data);
-          alert(data.error || "Failed to enable supervision");
+          notify({
+            variant: "error",
+            title: "Unable to enable supervision",
+            message: data.error || "Failed to enable supervision.",
+          });
         }
       } else {
         const response = await fetch(`/api/supervision?agentId=${agentId}`, {
@@ -81,15 +91,27 @@ export function AgentSupervisionPanel() {
         
         if (response.ok) {
           await fetchTeamAgents();
-          alert("Agent supervision disabled successfully!");
+          notify({
+            variant: "success",
+            title: "Supervision disabled",
+            message: "Agent supervision disabled successfully.",
+          });
         } else {
           console.error("Supervision error:", data);
-          alert(data.error || "Failed to disable supervision");
+          notify({
+            variant: "error",
+            title: "Unable to disable supervision",
+            message: data.error || "Failed to disable supervision.",
+          });
         }
       }
     } catch (error) {
       console.error("Failed to toggle supervision:", error);
-      alert("Network error: Failed to update supervision");
+      notify({
+        variant: "error",
+        title: "Network error",
+        message: "Failed to update supervision. Please try again.",
+      });
     } finally {
       setProcessingId(null);
     }

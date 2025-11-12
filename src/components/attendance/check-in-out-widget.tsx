@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Clock, MapPin, CheckCircle2, XCircle } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type AttendanceStatus = {
   isCheckedIn: boolean;
@@ -19,6 +20,7 @@ export function CheckInOutWidget() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [location, setLocation] = useState("");
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchAttendanceStatus();
@@ -71,13 +73,18 @@ export function CheckInOutWidget() {
       if (response.ok) {
         await fetchAttendanceStatus();
         setLocation("");
+        notify({ variant: "success", title: "Checked in", message: "You are now checked in." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to check in");
+        notify({
+          variant: "error",
+          title: "Unable to check in",
+          message: error.error || "Failed to check in.",
+        });
       }
     } catch (error) {
       console.error("Failed to check in:", error);
-      alert("Failed to check in");
+      notify({ variant: "error", title: "Network error", message: "Failed to check in." });
     } finally {
       setActionLoading(false);
     }
@@ -97,13 +104,18 @@ export function CheckInOutWidget() {
       if (response.ok) {
         await fetchAttendanceStatus();
         setLocation("");
+        notify({ variant: "success", title: "Checked out", message: "You have checked out for today." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to check out");
+        notify({
+          variant: "error",
+          title: "Unable to check out",
+          message: error.error || "Failed to check out.",
+        });
       }
     } catch (error) {
       console.error("Failed to check out:", error);
-      alert("Failed to check out");
+      notify({ variant: "error", title: "Network error", message: "Failed to check out." });
     } finally {
       setActionLoading(false);
     }

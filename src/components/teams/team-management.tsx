@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, UserPlus, X } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 type TeamMember = {
   user_id: string;
@@ -30,6 +32,8 @@ export function TeamManagement() {
   const [processing, setProcessing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState("");
+  const { notify } = useNotification();
+  const [pendingRemoval, setPendingRemoval] = useState<{ userId: string; name: string } | null>(null);
 
   useEffect(() => {
     fetchTeamData();
@@ -65,7 +69,7 @@ export function TeamManagement() {
 
   const handleAddMember = async () => {
     if (!selectedAgentId || !team) {
-      alert("Please select an agent");
+      notify({ variant: "warning", message: "Please select an agent to add." });
       return;
     }
 
@@ -81,20 +85,25 @@ export function TeamManagement() {
         await fetchTeamData();
         setShowAddForm(false);
         setSelectedAgentId("");
+        notify({ variant: "success", title: "Team member added", message: "Agent assigned to your team." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to add member");
+        notify({
+          variant: "error",
+          title: "Unable to add member",
+          message: error.error || "Failed to add member.",
+        });
       }
     } catch (error) {
       console.error("Failed to add member:", error);
-      alert("Failed to add member");
+      notify({ variant: "error", title: "Network error", message: "Failed to add member." });
     } finally {
       setProcessing(false);
     }
   };
 
-  const handleRemoveMember = async (userId: string) => {
-    if (!team || !confirm("Are you sure you want to remove this member from the team?")) {
+  const executeRemoveMember = async (userId: string) => {
+    if (!team) {
       return;
     }
 
@@ -106,15 +115,21 @@ export function TeamManagement() {
 
       if (response.ok) {
         await fetchTeamData();
+        notify({ variant: "success", title: "Member removed", message: "The agent was removed from your team." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to remove member");
+        notify({
+          variant: "error",
+          title: "Unable to remove member",
+          message: error.error || "Failed to remove member.",
+        });
       }
     } catch (error) {
       console.error("Failed to remove member:", error);
-      alert("Failed to remove member");
+      notify({ variant: "error", title: "Network error", message: "Failed to remove member." });
     } finally {
       setProcessing(false);
+      setPendingRemoval(null);
     }
   };
 
@@ -221,7 +236,12 @@ export function TeamManagement() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => handleRemoveMember(member.user_id)}
+                  onClick={() =>
+                    setPendingRemoval({
+                      userId: member.user_id,
+                      name: profile.full_name,
+                    })
+                  }
                   disabled={processing}
                 >
                   <X className="h-4 w-4" />
@@ -231,6 +251,28 @@ export function TeamManagement() {
           })
         )}
       </div>
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        title="Remove team member?"
+        description={
+          pendingRemoval ? (
+            <p>
+              This will remove <span className="font-semibold">{pendingRemoval.name}</span> from your team.
+              You can reassign them later if needed.
+            </p>
+          ) : null
+        }
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        isDestructive
+        loading={processing}
+        onConfirm={() => pendingRemoval && executeRemoveMember(pendingRemoval.userId)}
+        onCancel={() => {
+          if (!processing) {
+            setPendingRemoval(null);
+          }
+        }}
+      />
     </Card>
   );
 }

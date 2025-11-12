@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Star, Users } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type Agent = {
   id: string;
@@ -25,6 +26,7 @@ export function DailyRatingForm() {
     dealsClosed: 0,
     comments: "",
   });
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchTeamAgents();
@@ -62,7 +64,7 @@ export function DailyRatingForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAgentId) {
-      alert("Please select an agent");
+      notify({ variant: "warning", message: "Please select an agent to rate." });
       return;
     }
 
@@ -84,7 +86,7 @@ export function DailyRatingForm() {
       });
 
       if (response.ok) {
-        alert("Rating submitted successfully!");
+        notify({ variant: "success", title: "Rating submitted", message: "Daily rating saved successfully." });
         setFormData({
           appearanceScore: 5,
           professionalismScore: 5,
@@ -96,11 +98,15 @@ export function DailyRatingForm() {
         });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to submit rating");
+        notify({
+          variant: "error",
+          title: "Unable to submit rating",
+          message: error.error || "Failed to submit rating.",
+        });
       }
     } catch (error) {
       console.error("Failed to submit rating:", error);
-      alert("Failed to submit rating");
+      notify({ variant: "error", title: "Network error", message: "Failed to submit rating." });
     } finally {
       setSaving(false);
     }

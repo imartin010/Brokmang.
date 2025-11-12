@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/lib/supabase";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type Deal = {
   id: string;
@@ -41,6 +43,8 @@ export function DealsTable({ deals }: DealsTableProps) {
   );
   const [feedback, setFeedback] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const { notify } = useNotification();
 
   const startEdit = (deal: Deal) => {
     setEditingId(deal.id);
@@ -80,7 +84,7 @@ export function DealsTable({ deals }: DealsTableProps) {
     setLoading(true);
     setFeedback(null);
 
-    const response = await fetch(`/api/deals/ EGP{dealId}`, {
+    const response = await fetch(`/api/deals/${dealId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -99,11 +103,12 @@ export function DealsTable({ deals }: DealsTableProps) {
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setFeedback(
+      const message =
         typeof data.error === "string"
           ? data.error
-          : "Unable to update deal. Please try again or refresh.",
-      );
+          : "Unable to update deal. Please try again or refresh.";
+      setFeedback(message);
+      notify({ variant: "error", title: "Update failed", message });
       setLoading(false);
       return;
     }
@@ -113,29 +118,36 @@ export function DealsTable({ deals }: DealsTableProps) {
     router.refresh();
   };
 
-  const deleteDeal = async (dealId: string) => {
-    const confirmed = window.confirm("Are you sure you want to remove this deal?");
-    if (!confirmed) return;
+  const deleteDeal = (dealId: string, dealName: string) => {
+    setPendingDelete({ id: dealId, name: dealName });
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
 
     setLoading(true);
     setFeedback(null);
 
-    const response = await fetch(`/api/deals/ EGP{dealId}`, {
+    const response = await fetch(`/api/deals/${pendingDelete.id}`, {
       method: "DELETE",
     });
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setFeedback(
+      const message =
         typeof data.error === "string"
           ? data.error
-          : "Unable to delete deal. Please try again or refresh.",
-      );
+          : "Unable to delete deal. Please try again or refresh.";
+      setFeedback(message);
+      notify({ variant: "error", title: "Delete failed", message });
       setLoading(false);
+      setPendingDelete(null);
       return;
     }
 
     setLoading(false);
+    notify({ variant: "success", title: "Deal removed", message: "The deal was deleted successfully." });
+    setPendingDelete(null);
     router.refresh();
   };
 
@@ -155,7 +167,7 @@ export function DealsTable({ deals }: DealsTableProps) {
     setLoading(true);
     setFeedback(null);
 
-    const response = await fetch(`/api/deals/ EGP{dealId}/activities`, {
+    const response = await fetch(`/api/deals/${dealId}/activities`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -166,11 +178,12 @@ export function DealsTable({ deals }: DealsTableProps) {
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      setFeedback(
+      const message =
         typeof data.error === "string"
           ? data.error
-          : "Unable to log activity. Please try again or refresh.",
-      );
+          : "Unable to log activity. Please try again or refresh.";
+      setFeedback(message);
+      notify({ variant: "error", title: "Log failed", message });
       setLoading(false);
       return;
     }
@@ -366,7 +379,7 @@ export function DealsTable({ deals }: DealsTableProps) {
                           size="sm"
                           variant="destructive"
                           type="button"
-                          onClick={() => deleteDeal(deal.id)}
+                          onClick={() => deleteDeal(deal.id, deal.name)}
                           disabled={loading}
                         >
                           Delete
@@ -437,6 +450,28 @@ export function DealsTable({ deals }: DealsTableProps) {
           </table>
         </div>
       )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="Delete deal?"
+        description={
+          pendingDelete ? (
+            <p>
+              This will permanently remove <span className="font-semibold">{pendingDelete.name}</span> and its
+              activity logs.
+            </p>
+          ) : null
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        isDestructive
+        loading={loading}
+        onConfirm={confirmDelete}
+        onCancel={() => {
+          if (!loading) {
+            setPendingDelete(null);
+          }
+        }}
+      />
     </section>
   );
 }

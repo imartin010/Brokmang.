@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DollarSign } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 const COST_CATEGORIES = [
   { value: "rent", label: "Rent" },
@@ -38,6 +39,7 @@ export function CostEntryForm() {
     receiptUrl: "",
     notes: "",
   });
+  const { notify } = useNotification();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,7 +63,7 @@ export function CostEntryForm() {
       });
 
       if (response.ok) {
-        alert("Cost entry added successfully!");
+        notify({ variant: "success", title: "Cost entry added", message: "Expense recorded successfully." });
         setFormData({
           businessUnitId: "",
           category: "other_fixed",
@@ -75,11 +77,15 @@ export function CostEntryForm() {
         });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to add cost entry");
+        notify({
+          variant: "error",
+          title: "Unable to add cost entry",
+          message: error.error || "Failed to add cost entry.",
+        });
       }
     } catch (error) {
       console.error("Failed to add cost entry:", error);
-      alert("Failed to add cost entry");
+      notify({ variant: "error", title: "Network error", message: "Failed to add cost entry." });
     } finally {
       setLoading(false);
     }

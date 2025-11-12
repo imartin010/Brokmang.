@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Briefcase, Calendar, FileText, Target, Phone, TrendingUp, Smile } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type Mood = "great" | "good" | "okay" | "stressed" | "difficult";
 
@@ -36,6 +37,7 @@ export function DailyMetricsPanel() {
     mood: null as Mood | null,
     notes: "",
   });
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchMetrics();
@@ -83,11 +85,15 @@ export function DailyMetricsPanel() {
         await fetchMetrics();
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to update metrics");
+        notify({
+          variant: "error",
+          title: "Update failed",
+          message: error.error || "Failed to update metrics.",
+        });
       }
     } catch (error) {
       console.error("Failed to update metrics:", error);
-      alert("Failed to update metrics");
+      notify({ variant: "error", title: "Network error", message: "Failed to update metrics." });
     } finally {
       setSaving(false);
     }
@@ -111,14 +117,18 @@ export function DailyMetricsPanel() {
 
       if (response.ok) {
         await fetchMetrics();
-        alert("Metrics saved successfully!");
+        notify({ variant: "success", title: "Metrics saved", message: "Your daily metrics have been updated." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to save metrics");
+        notify({
+          variant: "error",
+          title: "Save failed",
+          message: error.error || "Failed to save metrics.",
+        });
       }
     } catch (error) {
       console.error("Failed to save metrics:", error);
-      alert("Failed to save metrics");
+      notify({ variant: "error", title: "Network error", message: "Failed to save metrics." });
     } finally {
       setSaving(false);
     }

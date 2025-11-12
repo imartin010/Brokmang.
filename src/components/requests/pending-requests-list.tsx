@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { FileText, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type ClientRequest = {
   id: string;
@@ -25,6 +26,7 @@ export function PendingRequestsList() {
   const [requests, setRequests] = useState<ClientRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchRequests();
@@ -58,13 +60,18 @@ export function PendingRequestsList() {
 
       if (response.ok) {
         await fetchRequests();
+        notify({ variant: "success", title: "Request approved", message: "Client request marked as approved." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to approve request");
+        notify({
+          variant: "error",
+          title: "Unable to approve",
+          message: error.error || "Failed to approve request.",
+        });
       }
     } catch (error) {
       console.error("Failed to approve request:", error);
-      alert("Failed to approve request");
+      notify({ variant: "error", title: "Network error", message: "Failed to approve request." });
     } finally {
       setProcessingId(null);
     }
@@ -72,7 +79,7 @@ export function PendingRequestsList() {
 
   const handleReject = async (requestId: string, reason: string) => {
     if (!reason.trim()) {
-      alert("Please provide a rejection reason");
+      notify({ variant: "warning", message: "Please provide a rejection reason." });
       return;
     }
 
@@ -89,13 +96,18 @@ export function PendingRequestsList() {
 
       if (response.ok) {
         await fetchRequests();
+        notify({ variant: "info", title: "Request rejected", message: "Client request was rejected." });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to reject request");
+        notify({
+          variant: "error",
+          title: "Unable to reject",
+          message: error.error || "Failed to reject request.",
+        });
       }
     } catch (error) {
       console.error("Failed to reject request:", error);
-      alert("Failed to reject request");
+      notify({ variant: "error", title: "Network error", message: "Failed to reject request." });
     } finally {
       setProcessingId(null);
     }

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Percent } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 const ROLES = [
   "sales_agent",
@@ -30,6 +31,7 @@ export function CommissionConfig() {
     baseRatePerMillion: "",
     description: "",
   });
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchConfigs();
@@ -65,7 +67,7 @@ export function CommissionConfig() {
       });
 
       if (response.ok) {
-        alert("Commission rate updated successfully!");
+        notify({ variant: "success", title: "Commission updated", message: "Commission rate saved successfully." });
         await fetchConfigs();
         setFormData({
           role: "sales_agent",
@@ -74,11 +76,15 @@ export function CommissionConfig() {
         });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to update commission rate");
+        notify({
+          variant: "error",
+          title: "Unable to update",
+          message: error.error || "Failed to update commission rate.",
+        });
       }
     } catch (error) {
       console.error("Failed to update commission rate:", error);
-      alert("Failed to update commission rate");
+      notify({ variant: "error", title: "Network error", message: "Failed to update commission rate." });
     } finally {
       setSaving(false);
     }

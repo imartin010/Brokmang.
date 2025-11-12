@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { UserCircle } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 const ROLES = [
   "sales_agent",
@@ -25,6 +26,7 @@ export function SalaryManagement() {
     effectiveTo: "",
     notes: "",
   });
+  const { notify } = useNotification();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +47,7 @@ export function SalaryManagement() {
       });
 
       if (response.ok) {
-        alert("Salary set successfully!");
+        notify({ variant: "success", title: "Salary saved", message: "Employee salary updated successfully." });
         setFormData({
           employeeId: "",
           monthlySalary: "",
@@ -56,11 +58,15 @@ export function SalaryManagement() {
         });
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to set salary");
+        notify({
+          variant: "error",
+          title: "Unable to set salary",
+          message: error.error || "Failed to set salary.",
+        });
       }
     } catch (error) {
       console.error("Failed to set salary:", error);
-      alert("Failed to set salary");
+      notify({ variant: "error", title: "Network error", message: "Failed to set salary." });
     } finally {
       setLoading(false);
     }

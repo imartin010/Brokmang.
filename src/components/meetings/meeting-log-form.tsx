@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 export function MeetingLogForm({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -14,6 +15,7 @@ export function MeetingLogForm({ onSuccess }: { onSuccess?: () => void }) {
     outcome: "",
     notes: "",
   });
+  const { notify } = useNotification();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +39,7 @@ export function MeetingLogForm({ onSuccess }: { onSuccess?: () => void }) {
       });
 
       if (response.ok) {
-        alert("Meeting details logged successfully!");
+        notify({ variant: "success", title: "Meeting logged", message: "Meeting details saved successfully." });
         setFormData({
           developerName: "",
           projectName: "",
@@ -48,11 +50,15 @@ export function MeetingLogForm({ onSuccess }: { onSuccess?: () => void }) {
         if (onSuccess) onSuccess();
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to log meeting");
+        notify({
+          variant: "error",
+          title: "Unable to log meeting",
+          message: error.error || "Failed to log meeting.",
+        });
       }
     } catch (error) {
       console.error("Failed to log meeting:", error);
-      alert("Failed to log meeting");
+      notify({ variant: "error", title: "Network error", message: "Failed to log meeting." });
     } finally {
       setLoading(false);
     }

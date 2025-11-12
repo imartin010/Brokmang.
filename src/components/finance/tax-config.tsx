@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 type TaxConfig = {
   withholding_tax_rate: number;
@@ -22,6 +23,7 @@ export function TaxConfig() {
     incomeTaxRate: "0.00",
     notes: "",
   });
+  const { notify } = useNotification();
 
   useEffect(() => {
     fetchConfig();
@@ -66,15 +68,19 @@ export function TaxConfig() {
       });
 
       if (response.ok) {
-        alert("Tax rates updated successfully!");
+        notify({ variant: "success", title: "Tax rates updated", message: "Tax configuration saved." });
         await fetchConfig();
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to update tax rates");
+        notify({
+          variant: "error",
+          title: "Unable to update",
+          message: error.error || "Failed to update tax rates.",
+        });
       }
     } catch (error) {
       console.error("Failed to update tax rates:", error);
-      alert("Failed to update tax rates");
+      notify({ variant: "error", title: "Network error", message: "Failed to update tax rates." });
     } finally {
       setSaving(false);
     }

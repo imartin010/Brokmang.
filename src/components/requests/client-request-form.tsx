@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FileText } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 export function ClientRequestForm({ onSuccess }: { onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -16,6 +17,7 @@ export function ClientRequestForm({ onSuccess }: { onSuccess?: () => void }) {
     deliveryDate: "",
     notes: "",
   });
+  const { notify } = useNotification();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +39,11 @@ export function ClientRequestForm({ onSuccess }: { onSuccess?: () => void }) {
       });
 
       if (response.ok) {
-        alert("Client request submitted successfully! Your team leader will review it.");
+        notify({
+          variant: "success",
+          title: "Request submitted",
+          message: "Client request saved. Your team leader will review it shortly.",
+        });
         setFormData({
           clientName: "",
           clientPhone: "",
@@ -50,11 +56,15 @@ export function ClientRequestForm({ onSuccess }: { onSuccess?: () => void }) {
         if (onSuccess) onSuccess();
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to submit request");
+        notify({
+          variant: "error",
+          title: "Unable to submit request",
+          message: error.error || "Failed to submit request.",
+        });
       }
     } catch (error) {
       console.error("Failed to submit request:", error);
-      alert("Failed to submit request");
+      notify({ variant: "error", title: "Network error", message: "Failed to submit request." });
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Calendar } from "lucide-react";
+import { useNotification } from "@/components/notifications/notification-provider";
 
 export function MeetingScheduler({ onSuccess, isCompletedLog = false }: { onSuccess?: () => void; isCompletedLog?: boolean }) {
   const [loading, setLoading] = useState(false);
@@ -15,6 +16,7 @@ export function MeetingScheduler({ onSuccess, isCompletedLog = false }: { onSucc
     durationMinutes: "60",
     location: "",
   });
+  const { notify } = useNotification();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +37,13 @@ export function MeetingScheduler({ onSuccess, isCompletedLog = false }: { onSucc
       });
 
       if (response.ok) {
-        alert(isCompletedLog ? "Meeting details logged successfully!" : "Meeting scheduled successfully! You'll receive reminders.");
+        notify({
+          variant: "success",
+          title: isCompletedLog ? "Meeting logged" : "Meeting scheduled",
+          message: isCompletedLog
+            ? "Meeting details logged successfully."
+            : "Meeting scheduled successfully. We'll remind you before it starts.",
+        });
         setFormData({
           title: "",
           description: "",
@@ -47,11 +55,15 @@ export function MeetingScheduler({ onSuccess, isCompletedLog = false }: { onSucc
         if (onSuccess) onSuccess();
       } else {
         const error = await response.json();
-        alert(error.error || "Failed to schedule meeting");
+        notify({
+          variant: "error",
+          title: "Unable to schedule meeting",
+          message: error.error || "Failed to schedule meeting.",
+        });
       }
     } catch (error) {
       console.error("Failed to schedule meeting:", error);
-      alert("Failed to schedule meeting");
+      notify({ variant: "error", title: "Network error", message: "Failed to schedule meeting." });
     } finally {
       setLoading(false);
     }
