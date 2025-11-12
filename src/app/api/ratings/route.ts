@@ -99,7 +99,7 @@ export async function POST(request: Request) {
   const { data: ratingData, error } = await (supabase
     .from("agent_daily_ratings")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Supabase JSONB type inference limitation
-    .insert(ratingPayload as any) as any)
+    .upsert(ratingPayload as any, { onConflict: "agent_id,rating_date,rated_by" }) as any)
     .select("*")
     .maybeSingle();
 
