@@ -1215,3 +1215,31 @@ comment on policy "Finance can manage all costs" on public.cost_entries is 'RLS 
 -- ============================================
 select 'All migrations and RLS policies applied successfully! New tables created: attendance_logs, client_requests, daily_agent_metrics, meetings, agent_daily_ratings, leads, cost_entries, employee_salaries, commission_config, tax_config, developer_commission_rates. Views created: P&L statements and report views. RLS policies enabled for all new tables.' as status;
 
+-- ============================================
+-- AGENT DAILY RATINGS UPDATE RLS
+-- ============================================
+
+drop policy if exists "Team leaders can update ratings" on public.agent_daily_ratings;
+
+create policy "Team leaders can update ratings"
+on public.agent_daily_ratings
+for update
+using (
+  rated_by = auth.uid()
+  and exists (
+    select 1 from public.teams t
+    join public.team_members tm on tm.team_id = t.id
+    where t.leader_id = auth.uid()
+    and tm.user_id = agent_daily_ratings.agent_id
+  )
+)
+with check (
+  rated_by = auth.uid()
+  and exists (
+    select 1 from public.teams t
+    join public.team_members tm on tm.team_id = t.id
+    where t.leader_id = auth.uid()
+    and tm.user_id = agent_daily_ratings.agent_id
+  )
+);
+
